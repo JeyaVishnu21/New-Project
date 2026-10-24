@@ -386,10 +386,6 @@ export default function FestDetails() {
                     </div>
 
                     <div className="fec-footer">
-                      <span className="crowd-status-pill unavailable">
-                        Crowd Monitoring: Not Available
-                      </span>
-
                       <Link to={`/event/${ev.id}`} className="btn btn-primary btn-sm">
                         View Event Details &rarr;
                       </Link>

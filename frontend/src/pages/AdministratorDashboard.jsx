@@ -19,6 +19,8 @@ import {
   getUnassignedApprovedEvents,
   assignEventToFest,
   getUnreadAlertsCount,
+  getAlerts,
+  markAlertRead,
 } from '../services/api';
 import Loading from '../components/Loading';
 import StatCard from '../components/StatCard';
@@ -146,6 +148,7 @@ export default function AdministratorDashboard() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
+  const [latestCrowdAlert, setLatestCrowdAlert] = useState(null);
 
   // Modals state
   // 1. Allocation / Schedule Modal
@@ -188,11 +191,12 @@ export default function AdministratorDashboard() {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [dashRes, eventsRes, festsRes, unassignedRes] = await Promise.all([
+      const [dashRes, eventsRes, festsRes, unassignedRes, alertsRes] = await Promise.all([
         getAdministratorDashboard(),
         getAdministratorEvents(),
         getAdministratorFests(),
         getUnassignedApprovedEvents(),
+        getAlerts(true).catch(() => ({ ok: false })),
       ]);
 
       if (dashRes.ok && dashRes.data) {
@@ -212,12 +216,45 @@ export default function AdministratorDashboard() {
       if (unassignedRes.ok && unassignedRes.data) {
         setUnassignedEvents(unassignedRes.data.events || []);
       }
+
+      if (alertsRes && alertsRes.ok && alertsRes.data?.alerts) {
+        const unreadAlerts = alertsRes.data.alerts.filter((a) => a.status === 'unread');
+        setLatestCrowdAlert(unreadAlerts.length > 0 ? unreadAlerts[0] : null);
+      } else {
+        setLatestCrowdAlert(null);
+      }
     } catch {
       setErrorMessage('Unable to connect to server. Please verify backend is running.');
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Listen to portal-alerts-read event to clear banner immediately when read in alerts view
+  useEffect(() => {
+    const handleAlertsRead = (e) => {
+      const alertId = e.detail?.alertId;
+      if (!alertId) {
+        setLatestCrowdAlert(null);
+      } else {
+        setLatestCrowdAlert((prev) => (prev && prev.id === alertId ? null : prev));
+      }
+    };
+    window.addEventListener('portal-alerts-read', handleAlertsRead);
+    return () => window.removeEventListener('portal-alerts-read', handleAlertsRead);
+  }, []);
+
+  const handleDismissLatestAlert = async () => {
+    if (latestCrowdAlert?.id) {
+      try {
+        await markAlertRead(latestCrowdAlert.id);
+        window.dispatchEvent(new CustomEvent('portal-alerts-read', { detail: { alertId: latestCrowdAlert.id } }));
+      } catch {
+        // Silently handle
+      }
+    }
+    setLatestCrowdAlert(null);
+  };
 
   const fetchSelectedFestEvents = useCallback(async (festId) => {
     if (!festId) return;
@@ -721,9 +758,11 @@ export default function AdministratorDashboard() {
   );
 
   // Completed / Past events for History
-  const pastEvents = allEvents.filter(
-    (ev) => (ev.status || '').toLowerCase() === 'completed'
-  );
+  const pastEvents = allEvents.filter((ev) => {
+    const st = (ev.status || '').toLowerCase();
+    const comp = (ev.computed_status || '').toLowerCase();
+    return st === 'completed' || comp === 'completed';
+  });
 
   // Tab Title Metadata
   const tabTitles = {
@@ -1024,6 +1063,51 @@ export default function AdministratorDashboard() {
             </div>
           </div>
         </header>
+
+        {/* Urgent Crowd Safety Alert Notification (Red, Big Box) */}
+        {latestCrowdAlert && (
+          <div className="portal-alert portal-alert-big portal-alert-danger" role="alert" style={{ marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', width: '100%' }}>
+              <div style={{ flexShrink: 0, marginTop: '2px' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: '#dc2626' }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: '700', fontSize: '1.05rem', color: '#991b1b', marginBottom: '0.25rem' }}>
+                  URGENT CROWD SAFETY ALERT: {latestCrowdAlert.event_name}
+                </div>
+                <div style={{ fontSize: '0.925rem', color: '#7f1d1d', lineHeight: '1.45', marginBottom: '0.35rem' }}>
+                  {latestCrowdAlert.message}
+                </div>
+                <div style={{ fontSize: '0.8125rem', color: '#991b1b', fontWeight: '500' }}>
+                  Headcount Detected: <strong>{latestCrowdAlert.detected_count} persons</strong> &bull; Venue Safety Ceiling: <strong>{latestCrowdAlert.threshold} persons</strong> &bull; Dispatched to Event Organizer &amp; Reviewing Administrator.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => handleTabChange('crowd-alerts')}
+                  style={{ backgroundColor: '#dc2626', borderColor: '#b91c1c' }}
+                >
+                  View Alerts
+                </button>
+                <button
+                  type="button"
+                  className="portal-alert-close"
+                  onClick={handleDismissLatestAlert}
+                  aria-label="Dismiss alert"
+                  style={{ color: '#991b1b', fontSize: '1.5rem', lineHeight: '1', cursor: 'pointer' }}
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Status Feedback Banners */}
         {actionSuccess && (

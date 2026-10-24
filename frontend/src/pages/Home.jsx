@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { getEventSeries, getPublicEvents, getPublicVenues } from '../services/api';
 import Loading from '../components/Loading';
 import StatusBadge from '../components/StatusBadge';
@@ -33,10 +33,72 @@ export default function Home() {
   const [loadingVenues, setLoadingVenues] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const navigate = useNavigate();
+  const searchWrapRef = useRef(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // Live autocomplete matches for hero search bar
+  const searchSuggestions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return events
+      .filter((ev) => (ev.event_name || '').toLowerCase().includes(q))
+      .slice(0, 5);
+  }, [events, searchQuery]);
+
+  // Close search suggestions on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle hero search submit: navigate directly to matching event details page
+  const handleHeroSearch = (e) => {
+    e.preventDefault();
+    setShowSuggestions(false);
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      const target = document.getElementById('upcoming-events');
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    // 1. Direct or partial match on event name -> navigate directly to Event Details page
+    const matchedEvent =
+      events.find((ev) => (ev.event_name || '').toLowerCase() === query) ||
+      events.find((ev) => (ev.event_name || '').toLowerCase().includes(query)) ||
+      events.find((ev) => (ev.description || '').toLowerCase().includes(query)) ||
+      events.find((ev) => (ev.venue_name || '').toLowerCase().includes(query));
+
+    if (matchedEvent) {
+      navigate(`/event/${matchedEvent.id}`);
+      return;
+    }
+
+    // 2. Direct or partial fest match -> navigate to Festival Series details
+    const matchedFest =
+      fests.find((f) => (f.name || '').toLowerCase() === query) ||
+      fests.find((f) => (f.name || '').toLowerCase().includes(query));
+
+    if (matchedFest) {
+      navigate(`/fest/${matchedFest.id}`);
+      return;
+    }
+
+    // 3. Fallback: scroll to upcoming events directory
+    const target = document.getElementById('upcoming-events');
+    if (target) target.scrollIntoView({ behavior: 'smooth' });
+  };
 
   // Load campus festivals
   useEffect(() => {
@@ -262,42 +324,72 @@ export default function Home() {
                 Discover college events, schedules, venues and crowd information.
               </p>
 
-              {/* Search Bar matching screenshot */}
-              <form
-                className="hero-search-bar"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const target = document.getElementById('upcoming-events');
-                  if (target) target.scrollIntoView({ behavior: 'smooth' });
-                }}
-              >
-                <div className="hsb-input-wrap">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                  <input
-                    type="text"
-                    placeholder="Search events, clubs, festivals..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="hsb-input"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      className="hsb-clear-btn"
-                      onClick={() => setSearchQuery('')}
-                      aria-label="Clear search"
-                    >
-                      &times;
-                    </button>
-                  )}
-                </div>
-                <button type="submit" className="btn btn-primary hsb-btn">
-                  Search
-                </button>
-              </form>
+              {/* Search Bar matching user requirement */}
+              <div className="hero-search-container" ref={searchWrapRef}>
+                <form
+                  className="hero-search-bar"
+                  onSubmit={handleHeroSearch}
+                >
+                  <div className="hsb-input-wrap">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search events, clubs, festivals..."
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setShowSuggestions(true);
+                      }}
+                      onFocus={() => setShowSuggestions(true)}
+                      className="hsb-input"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        className="hsb-clear-btn"
+                        onClick={() => {
+                          setSearchQuery('');
+                          setShowSuggestions(false);
+                        }}
+                        aria-label="Clear search"
+                      >
+                        &times;
+                      </button>
+                    )}
+                  </div>
+                  <button type="submit" className="btn btn-primary hsb-btn">
+                    Search
+                  </button>
+                </form>
+
+                {/* Live suggestions dropdown taking user directly to event details */}
+                {showSuggestions && searchQuery.trim().length > 0 && searchSuggestions.length > 0 && (
+                  <div className="hsb-suggestions-dropdown">
+                    {searchSuggestions.map((ev) => (
+                      <button
+                        key={ev.id}
+                        type="button"
+                        className="hsb-suggestion-item"
+                        onClick={() => {
+                          setShowSuggestions(false);
+                          navigate(`/event/${ev.id}`);
+                        }}
+                      >
+                        <div className="hsb-sug-title">{ev.event_name}</div>
+                        <div className="hsb-sug-meta">
+                          <span>{ev.venue_name || 'Campus Venue'}</span>
+                          <span>&bull;</span>
+                          <span>{ev.category || 'General'}</span>
+                          <span className="hsb-sug-arrow">View Details &rarr;</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Quick Explore Category Tags */}
               <div className="hero-explore-row">
@@ -670,11 +762,6 @@ export default function Home() {
                     </div>
 
                     <div className="uei-footer">
-                      {/* Honest Crowd Monitoring Status: Not Available (no fake/test data) */}
-                      <span className="crowd-status-pill unavailable">
-                        Crowd Monitoring: Not Available
-                      </span>
-
                       <Link to={`/event/${ev.id}`} className="btn btn-secondary btn-sm">
                         Event Details &rarr;
                       </Link>
@@ -747,13 +834,6 @@ export default function Home() {
                       <span className="vgc-status-dot" aria-hidden="true" />
                       Open for Scheduled Events
                     </span>
-                    <a
-                      href="#upcoming-events"
-                      className="vgc-browse-link"
-                      onClick={() => setSearchQuery(venue.name)}
-                    >
-                      Filter Events Here &rarr;
-                    </a>
                   </div>
                 </article>
               ))}
@@ -859,7 +939,7 @@ export default function Home() {
                   <span className="fcn-badge">Status: In Development</span>
                 </div>
                 <p className="fcn-text">
-                  Automated computer-vision crowd density monitoring is currently pending camera model implementation.
+                  Automated computer-vision crowd density monitoring is currently pending model implementation.
                   Live headcount telemetry will be activated across campus venues once computer-vision models are deployed.
                 </p>
               </div>

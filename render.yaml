@@ -1,0 +1,38 @@
+services:
+  # Backend Web Service
+  - type: web
+    name: crowd-event-backend
+    env: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT "app:create_app()"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DB_ENGINE
+        value: mongodb
+      - key: MONGO_URI
+        sync: false # Set to your free MongoDB Atlas URI in Render dashboard
+      - key: MONGO_DB_NAME
+        value: crowd_event_db
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false # Set to your frontend Render URL
+      - key: DEBUG
+        value: False
+
+  # Frontend Static Site
+  - type: web
+    name: crowd-event-frontend
+    env: static
+    region: oregon
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false # Set to your backend URL e.g. https://crowd-event-backend.onrender.com/api

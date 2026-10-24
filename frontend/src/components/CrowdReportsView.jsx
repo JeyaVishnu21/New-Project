@@ -23,6 +23,53 @@ export default function CrowdReportsView({ role = 'administrator' }) {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadError, setDownloadError] = useState('');
   const [hoveredPoint, setHoveredPoint] = useState(null);
+  const [selectedFestId, setSelectedFestId] = useState('');
+
+  // Extract distinct fests from events list
+  const festsList = useMemo(() => {
+    const festMap = new Map();
+    events.forEach((ev) => {
+      const fId = ev.series_id != null ? String(ev.series_id) : 'independent';
+      const fName = ev.fest_name || (ev.series_id ? `Fest #${ev.series_id}` : 'Independent Events / Standalone');
+      if (!festMap.has(fId)) {
+        festMap.set(fId, { id: fId, name: fName, count: 0 });
+      }
+      festMap.get(fId).count += 1;
+    });
+    return Array.from(festMap.values());
+  }, [events]);
+
+  // Filter events belonging to selected fest
+  const filteredEventsForFest = useMemo(() => {
+    if (!selectedFestId) return [];
+    if (selectedFestId === 'all') return events;
+    return events.filter((ev) => {
+      const fId = ev.series_id != null ? String(ev.series_id) : 'independent';
+      return fId === selectedFestId;
+    });
+  }, [events, selectedFestId]);
+
+  // When fest changes, update selected event to first event of that fest
+  const handleFestChange = (e) => {
+    const newFestId = e.target.value;
+    setSelectedFestId(newFestId);
+    if (!newFestId) {
+      setSelectedEventId('');
+      return;
+    }
+    const matching = newFestId === 'all'
+      ? events
+      : events.filter((ev) => {
+          const fId = ev.series_id != null ? String(ev.series_id) : 'independent';
+          return fId === newFestId;
+        });
+    if (matching.length > 0) {
+      const withData = matching.find((ev) => (ev.analyzed_images || 0) > 0);
+      setSelectedEventId(String(withData ? withData.id : matching[0].id));
+    } else {
+      setSelectedEventId('');
+    }
+  };
 
   // 1. Load accessible events for selector
   const fetchEvents = useCallback(async () => {
@@ -34,12 +81,15 @@ export default function CrowdReportsView({ role = 'administrator' }) {
         const eventList = res.data.events;
         setEvents(eventList);
 
-        // Pre-select first event with analysis data, or the very first event
+        // Pre-select first event with analysis data, or the very first event, and its corresponding fest
         if (eventList.length > 0) {
           const withData = eventList.find((e) => (e.analyzed_images || 0) > 0);
-          const initialId = withData ? withData.id : eventList[0].id;
-          setSelectedEventId(String(initialId));
+          const initial = withData || eventList[0];
+          const initialFest = initial.series_id != null ? String(initial.series_id) : 'independent';
+          setSelectedFestId(initialFest);
+          setSelectedEventId(String(initial.id));
         } else {
+          setSelectedFestId('');
           setSelectedEventId('');
         }
       } else {
@@ -329,38 +379,86 @@ export default function CrowdReportsView({ role = 'administrator' }) {
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              id="report-event-select"
-              value={selectedEventId}
-              onChange={handleEventChange}
-              disabled={loadingEvents || events.length === 0}
-              style={{
-                flex: '1 1 320px',
-                padding: '0.55rem 0.85rem',
-                fontSize: '0.875rem',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-sm)',
-                backgroundColor: '#ffffff',
-                color: 'var(--text-primary)',
-                fontFamily: 'inherit',
-                outline: 'none',
-              }}
-            >
-              {events.length === 0 ? (
-                <option value="">{loadingEvents ? 'Loading events...' : 'No events available'}</option>
-              ) : (
-                events.map((ev) => {
-                  const hasAnalyses = (ev.analyzed_images || 0) > 0;
-                  const maxCrowdText = hasAnalyses ? `Peak: ${ev.max_crowd} persons` : 'No analyses';
-                  return (
-                    <option key={ev.id} value={ev.id}>
-                      #{ev.id} — {ev.event_name} | {ev.venue_name || 'Unassigned Venue'} ({maxCrowdText})
-                    </option>
-                  );
-                })
-              )}
-            </select>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            {/* Step 1: Fest Dropdown */}
+            <div style={{ flex: '1 1 240px' }}>
+              <label htmlFor="report-fest-select" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                1. Select Fest / Program:
+              </label>
+              <select
+                id="report-fest-select"
+                value={selectedFestId}
+                onChange={handleFestChange}
+                disabled={loadingEvents || festsList.length === 0}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: '#ffffff',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                }}
+              >
+                {festsList.length === 0 ? (
+                  <option value="">{loadingEvents ? 'Loading fests...' : 'No fests available'}</option>
+                ) : (
+                  <>
+                    <option value="" disabled>-- Select a Fest / Program --</option>
+                    {festsList.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name} ({f.count} {f.count === 1 ? 'event' : 'events'})
+                      </option>
+                    ))}
+                    <option value="all">-- All Fests ({events.length} total events) --</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            {/* Step 2: Event in that Fest */}
+            <div style={{ flex: '2 1 320px' }}>
+              <label htmlFor="report-event-select" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                2. Select Event in Fest:
+              </label>
+              <select
+                id="report-event-select"
+                value={selectedEventId}
+                onChange={handleEventChange}
+                disabled={loadingEvents || !selectedFestId || filteredEventsForFest.length === 0}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: '#ffffff',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                }}
+              >
+                {!selectedFestId ? (
+                  <option value="">-- Please select a fest above first --</option>
+                ) : filteredEventsForFest.length === 0 ? (
+                  <option value="">No events found for this fest</option>
+                ) : (
+                  filteredEventsForFest.map((ev) => {
+                    const hasAnalyses = (ev.analyzed_images || 0) > 0;
+                    const maxCrowdText = hasAnalyses ? `Peak: ${ev.max_crowd} persons` : 'No analyses';
+                    return (
+                      <option key={ev.id} value={ev.id}>
+                        #{ev.id} — {ev.event_name} | {ev.venue_name || 'Unassigned Venue'} ({maxCrowdText})
+                      </option>
+                    );
+                  })
+                )}
+              </select>
+            </div>
 
             {event && (
               <span
@@ -376,6 +474,7 @@ export default function CrowdReportsView({ role = 'administrator' }) {
                   border: `1px solid ${event.status === 'approved' ? '#bbf7d0' : '#fde68a'}`,
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
+                  marginTop: '1.25rem',
                 }}
               >
                 ● Status: {event.status}
@@ -1145,7 +1244,6 @@ export default function CrowdReportsView({ role = 'administrator' }) {
                         <th scope="col">Alert Timestamp</th>
                         <th scope="col">Detected Count</th>
                         <th scope="col">Threshold Ceiling</th>
-                        <th scope="col">Recipient</th>
                         <th scope="col">Status</th>
                         <th scope="col">Notice Message</th>
                       </tr>
@@ -1167,9 +1265,6 @@ export default function CrowdReportsView({ role = 'administrator' }) {
                           </td>
                           <td style={{ color: 'var(--text-muted)' }}>
                             {alt.threshold?.toLocaleString()}
-                          </td>
-                          <td>
-                            {alt.recipient_name} ({alt.recipient_role})
                           </td>
                           <td>
                             <span

@@ -1699,10 +1699,25 @@ a:hover {
   color: var(--success);
 }
 
-.portal-alert-error {
-  background-color: var(--danger-bg);
-  border: 1px solid var(--danger-border);
-  color: var(--danger);
+.portal-alert-error,
+.portal-alert-danger {
+  background-color: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+}
+
+/* Big Red Alert Banner for Safety / Crowd Breaches */
+.portal-alert-big {
+  padding: 1.25rem 1.75rem;
+  border-radius: 10px;
+  font-size: 0.9375rem;
+  border: 2px solid #ef4444;
+  background-color: #fef2f2;
+  color: #991b1b;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.15);
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
 }
 
 .portal-alert-close {
@@ -4044,7 +4059,7 @@ a:hover {
 .uei-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding-top: 1rem;
   border-top: 1px solid var(--border-color);
   margin-top: auto;
@@ -4367,7 +4382,7 @@ a:hover {
 .fec-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding-top: 1rem;
   border-top: 1px solid var(--border-color);
   margin-top: auto;
@@ -4868,53 +4883,15 @@ a:hover {
   flex: 1;
 }
 
-/* 1. Left Edge Hover Sensor (Detects mouse near the left border) */
+/* 1. Left Edge Hover Sensor (Detects mouse near the left border and corner) */
 .sidebar-edge-sensor {
   position: fixed;
   top: 0;
   left: 0;
   bottom: 0;
-  width: 22px;
+  width: 32px;
   z-index: 998;
   background: transparent;
-}
-
-/* 2. Floating Minimal Menu Trigger Button on Top-Left */
-.sidebar-floating-toggle {
-  position: fixed;
-  top: 18px;
-  left: 18px;
-  z-index: 999;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.85rem;
-  background-color: #0b1329;
-  color: #f8fafc;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 9999px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.sidebar-floating-toggle:hover,
-.sidebar-floating-toggle.toggle-active {
-  background-color: #1e3a8a;
-  border-color: #3b82f6;
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
-  transform: translateX(2px);
-}
-
-.sft-icon {
-  display: flex;
-  align-items: center;
-}
-
-.sft-label {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
 }
 
 /* 3. Flyout Sidebar Drawer */
@@ -4931,7 +4908,7 @@ a:hover {
   display: flex;
   flex-direction: column;
   transform: translateX(-100%);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease;
+  transition: transform 0.58s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.58s ease;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: none;
 }
@@ -5230,6 +5207,12 @@ a:hover {
 }
 
 /* Search Bar (Matches Screenshot) */
+.hero-search-container {
+  position: relative;
+  max-width: 580px;
+  width: 100%;
+}
+
 .hero-search-bar {
   display: flex;
   align-items: center;
@@ -5239,7 +5222,7 @@ a:hover {
   border-radius: 10px;
   padding: 0.35rem 0.45rem 0.35rem 0.85rem;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-  max-width: 580px;
+  width: 100%;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -5287,6 +5270,62 @@ a:hover {
   font-weight: 600;
   border-radius: 7px;
   flex-shrink: 0;
+}
+
+/* Hero Search Live Suggestions Dropdown */
+.hsb-suggestions-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+  max-height: 290px;
+  overflow-y: auto;
+  z-index: 60;
+  padding: 0.4rem;
+}
+
+.hsb-suggestion-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.hsb-suggestion-item:hover,
+.hsb-suggestion-item:focus {
+  background-color: #f1f5f9;
+  outline: none;
+}
+
+.hsb-sug-title {
+  font-size: 0.925rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.hsb-sug-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.775rem;
+  color: #64748b;
+  margin-top: 0.2rem;
+}
+
+.hsb-sug-arrow {
+  color: #2563eb;
+  font-weight: 600;
+  margin-left: auto;
 }
 
 /* Quick Explore Tags */

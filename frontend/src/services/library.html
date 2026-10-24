@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Library Management Webpage</title>
+    <script src="jquery-3.7.1.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f2f2f2; }
+        .book { background: white; padding: 20px; width: 350px; border-radius: 8px; }
+        button { background-color: rgb(100, 222, 39); color: white; padding: 10px; border: none; cursor: pointer; margin-right: 10px; }
+        #returnBtn { background-color: #e74c3c; }
+        button:disabled { background-color: #999; cursor: not-allowed; }
+        #notification { color: blue; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <h2>College Library Management</h2>
+    <div class="book">
+        <h3 id="title">Book Title: GOT</h3>
+        <p id="author">Author: John Snow</p>
+        <p id="status">Availability: Available</p>
+        <button id="issue">Issue Book</button>
+        <button id="returnBtn" disabled>Return Book</button>
+        <p id="notification"></p>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+
+            $("#issue").click(function() {
+                if ($("#status").text() === "Availability: Available") {
+                    $("#status").text("Availability: Issued");
+                    $("#notification").html("Book issued successfully!");
+                    $("#issue").prop("disabled", true);
+                    $("#returnBtn").prop("disabled", false);
+                } else {
+                    $("#notification").text("Book has already been issued.");
+                }
+            });
+
+            $("#returnBtn").click(function() {
+                if ($("#status").text() === "Availability: Issued") {
+                    $("#status").text("Availability: Available");
+                    $("#notification").html("Book returned successfully!");
+                    $("#returnBtn").prop("disabled", true);
+                    $("#issue").prop("disabled", false);
+                } else {
+                    $("#notification").text("Book is not issued.");
+                }
+            });
+
+        });
+    </script>
+</body>
+</html>
+

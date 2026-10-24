@@ -51,6 +51,8 @@ class ReportModel:
                     SELECT 
                         e.id,
                         e.event_name,
+                        e.series_id,
+                        COALESCE(f.name, 'Independent Events') AS fest_name,
                         e.organizer_id,
                         u.name AS organizer_name,
                         u.email AS organizer_email,
@@ -74,11 +76,12 @@ class ReportModel:
                         COUNT(DISTINCT a.id) AS alerts_count
                     FROM events e
                     JOIN users u ON e.organizer_id = u.id
+                    LEFT JOIN fest f ON e.series_id = f.id
                     LEFT JOIN venues v ON e.venue_id = v.id
                     LEFT JOIN images img ON e.id = img.event_id
                     LEFT JOIN crowd_analyses ca ON img.id = ca.image_id
                     LEFT JOIN alerts a ON e.id = a.event_id
-                    GROUP BY e.id, u.name, u.email, v.name, v.capacity
+                    GROUP BY e.id, u.name, u.email, v.name, v.capacity, e.series_id, f.name
                     ORDER BY (analyzed_images > 0) DESC, COALESCE(e.approved_date, e.requested_date) DESC, e.id DESC;
                     """
                     cursor.execute(query)
@@ -87,6 +90,8 @@ class ReportModel:
                     SELECT 
                         e.id,
                         e.event_name,
+                        e.series_id,
+                        COALESCE(f.name, 'Independent Events') AS fest_name,
                         e.organizer_id,
                         u.name AS organizer_name,
                         u.email AS organizer_email,
@@ -110,12 +115,13 @@ class ReportModel:
                         COUNT(DISTINCT a.id) AS alerts_count
                     FROM events e
                     JOIN users u ON e.organizer_id = u.id
+                    LEFT JOIN fest f ON e.series_id = f.id
                     LEFT JOIN venues v ON e.venue_id = v.id
                     LEFT JOIN images img ON e.id = img.event_id
                     LEFT JOIN crowd_analyses ca ON img.id = ca.image_id
                     LEFT JOIN alerts a ON e.id = a.event_id
                     WHERE e.organizer_id = %s
-                    GROUP BY e.id, u.name, u.email, v.name, v.capacity
+                    GROUP BY e.id, u.name, u.email, v.name, v.capacity, e.series_id, f.name
                     ORDER BY (analyzed_images > 0) DESC, COALESCE(e.approved_date, e.requested_date) DESC, e.id DESC;
                     """
                     cursor.execute(query, (user_id,))
@@ -248,22 +254,23 @@ class ReportModel:
                 )
                 history = list(cursor.fetchall())
 
-                # 4. Fetch Actual Crowd Alerts
+                # 4. Fetch Actual Crowd Alerts (deduplicated by incident)
                 cursor.execute(
                     """
                     SELECT 
-                        a.id,
+                        MIN(a.id) AS id,
                         a.detected_count,
                         a.threshold,
                         a.message,
                         a.status,
                         a.created_at,
-                        u.name AS recipient_name,
-                        u.role AS recipient_role
+                        MIN(u.name) AS recipient_name,
+                        MIN(u.role) AS recipient_role
                     FROM alerts a
                     JOIN users u ON a.user_id = u.id
                     WHERE a.event_id = %s
-                    ORDER BY a.created_at ASC, a.id ASC;
+                    GROUP BY a.detected_count, a.threshold, a.message, a.status, a.created_at
+                    ORDER BY a.created_at ASC, MIN(a.id) ASC;
                     """,
                     (event_id,)
                 )

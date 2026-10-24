@@ -288,12 +288,16 @@ class AlertModel:
         if event.get('organizer_id'):
             recipient_ids.add(event['organizer_id'])
 
-        try:
-            admins = list(UserModel.get_by_role('administrator') or []) + list(UserModel.get_by_role('management') or [])
-            for adm in admins:
-                recipient_ids.add(adm['id'])
-        except Exception as e:
-            pass
+        # Only notify the specific administrator who verified/approved the event (not all admins)
+        if event.get('approved_by'):
+            recipient_ids.add(event['approved_by'])
+        else:
+            try:
+                admins = list(UserModel.get_by_role('administrator') or []) + list(UserModel.get_by_role('management') or [])
+                if admins:
+                    recipient_ids.add(admins[0]['id'])
+            except Exception:
+                pass
 
         created_ids = []
         conn = get_db_connection()

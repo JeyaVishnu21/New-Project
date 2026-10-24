@@ -57,6 +57,7 @@ export default function CrowdAlertsView({ role = 'organizer', onUnreadCountChang
         setAlerts((prev) =>
           prev.map((a) => (a.id === alertId ? { ...a, status: 'read' } : a))
         );
+        window.dispatchEvent(new CustomEvent('portal-alerts-read', { detail: { alertId } }));
         if (onUnreadCountChange) {
           // decrement locally
           const remainingUnread = alerts.filter((a) => a.id !== alertId && a.status === 'unread').length;
@@ -76,6 +77,7 @@ export default function CrowdAlertsView({ role = 'organizer', onUnreadCountChang
       const res = await markAllAlertsRead();
       if (res.ok) {
         setAlerts((prev) => prev.map((a) => ({ ...a, status: 'read' })));
+        window.dispatchEvent(new CustomEvent('portal-alerts-read', { detail: { alertId: null } }));
         if (onUnreadCountChange) {
           onUnreadCountChange(0);
         }
@@ -448,12 +450,6 @@ export default function CrowdAlertsView({ role = 'organizer', onUnreadCountChang
                             <circle cx="12" cy="10" r="3" />
                           </svg>
                           <strong>{alert.venue_name}</strong> {alert.venue_location ? `(${alert.venue_location})` : ''}
-                        </span>
-                      )}
-
-                      {alert.recipient_name && role === 'administrator' && (
-                        <span>
-                          Targeted Recipient: <strong>{alert.recipient_name}</strong> ({alert.recipient_role})
                         </span>
                       )}
                     </div>

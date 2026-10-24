@@ -21,7 +21,14 @@ class Settings:
     # Security
     SECRET_KEY: str = os.getenv('SECRET_KEY', 'default-dev-secret-key-replace-in-production')
 
-    # MySQL Database settings (Placeholder for Stage 2)
+    # Database Engine selection ('mongodb' or 'mysql')
+    DB_ENGINE: str = os.getenv('DB_ENGINE', 'mongodb').lower()
+
+    # MongoDB Database settings
+    MONGO_URI: str = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
+    MONGO_DB_NAME: str = os.getenv('MONGO_DB_NAME', 'crowd_event_db')
+
+    # Legacy MySQL Database settings (Used if DB_ENGINE == 'mysql')
     DB_HOST: str = os.getenv('DB_HOST', 'localhost')
     DB_PORT: int = int(os.getenv('DB_PORT', 3306))
     DB_USER: str = os.getenv('DB_USER', 'root')

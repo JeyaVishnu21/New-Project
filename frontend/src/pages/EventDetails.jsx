@@ -337,10 +337,6 @@ export default function EventDetails() {
 
                 <div className="cmp-specs">
                   <div className="cmp-spec-row">
-                    <span className="cmp-spec-lbl">Camera Feed</span>
-                    <span className="cmp-spec-val">Standby</span>
-                  </div>
-                  <div className="cmp-spec-row">
                     <span className="cmp-spec-lbl">Estimated Attendees</span>
                     <span className="cmp-spec-val">Not Available</span>
                   </div>

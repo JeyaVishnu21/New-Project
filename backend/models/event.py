@@ -179,6 +179,7 @@ class EventModel:
 
         if app_date < today_date:
             event['computed_status'] = 'Completed'
+            event['status'] = 'completed'
         elif app_date > today_date:
             event['computed_status'] = 'Upcoming'
         else:
@@ -194,16 +195,50 @@ class EventModel:
                 return None
 
             s_t = parse_time(start_time_raw)
+            e_t = parse_time(end_time_raw)
             if s_t and current_time < s_t:
                 event['computed_status'] = 'Upcoming'
-            else:
+            elif e_t and current_time >= e_t:
                 event['computed_status'] = 'Completed'
+                event['status'] = 'completed'
+            else:
+                event['computed_status'] = 'Ongoing'
+                event['is_happening'] = True
 
         return event
 
     @staticmethod
+    def auto_update_completed_events() -> int:
+        """
+        Transitions events to 'completed' in the database if their approved date
+        and end time have passed. Ensures status integrity across the entire application.
+        """
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE events
+                    SET status = 'completed'
+                    WHERE status = 'approved'
+                      AND (
+                          approved_date < CURRENT_DATE()
+                          OR (approved_date = CURRENT_DATE() AND approved_end_time <= CURRENT_TIME())
+                      );
+                    """
+                )
+                affected = cursor.rowcount
+                conn.commit()
+                return affected
+        except Exception:
+            return 0
+        finally:
+            conn.close()
+
+    @staticmethod
     def get_by_id(event_id: int) -> Optional[Dict[str, Any]]:
         """Retrieve full event record with organizer, venue, and fest series details."""
+        EventModel.auto_update_completed_events()
         conn = get_db_connection()
         try:
             with conn.cursor() as cursor:
@@ -236,6 +271,7 @@ class EventModel:
     @staticmethod
     def get_by_organizer(organizer_id: int) -> List[Dict[str, Any]]:
         """Retrieve all events created by a specific organizer with venue and fest details."""
+        EventModel.auto_update_completed_events()
         conn = get_db_connection()
         try:
             with conn.cursor() as cursor:
@@ -265,6 +301,7 @@ class EventModel:
     @staticmethod
     def get_all(status: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieve all events for management overview, optionally filtered by status."""
+        EventModel.auto_update_completed_events()
         sql = """
         SELECT 
             e.*,
@@ -289,7 +326,10 @@ class EventModel:
         try:
             with conn.cursor() as cursor:
                 cursor.execute(sql, tuple(params))
-                return cursor.fetchall()
+                rows = cursor.fetchall()
+                for r in rows:
+                    EventModel.attach_happening_status(r)
+                return rows
         finally:
             conn.close()
 
@@ -304,6 +344,7 @@ class EventModel:
         Calculates real-time event statistics for a specific organizer.
         Strictly isolated to organizer_id.
         """
+        EventModel.auto_update_completed_events()
         from datetime import date
         today_str = date.today().isoformat()
 
@@ -338,6 +379,7 @@ class EventModel:
         """
         Calculates system-wide event statistics across all organizers for administrator.
         """
+        EventModel.auto_update_completed_events()
         from datetime import date
         today_str = date.today().isoformat()
 
@@ -572,6 +614,7 @@ class EventModel:
         Supports search, year, month, category, status, and series filters.
         Includes computed status, festival series name, venue details, and crowd maximum estimates.
         """
+        EventModel.auto_update_completed_events()
         from datetime import date, datetime
         today_date = date.today()
         now_time = datetime.now().time()

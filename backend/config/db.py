@@ -1,26 +1,30 @@
 """
-Database Configuration & Connection Layer (Stage 2)
----------------------------------------------------
-This module provides MySQL connection management using PyMySQL.
-Supports both single queries and multi-statement schema/seed scripts.
+Database Configuration & Connection Layer
+-----------------------------------------
+Provides unified database connection management supporting:
+1. MongoDB (Primary default for deployment and local execution)
+2. MySQL (Legacy relational server)
 """
 
-import pymysql
-import pymysql.cursors
-import pymysql.constants.CLIENT
 from typing import Dict, Any, Optional
 from config.settings import settings
 
 
-def get_db_connection(include_db: bool = True, multi_statements: bool = False) -> pymysql.connections.Connection:
+def get_db_connection(include_db: bool = True, multi_statements: bool = False):
     """
-    Establish and return a MySQL database connection using settings.
-    
-    :param include_db: If True, connects directly to settings.DB_NAME.
-                       If False, connects to MySQL server without selecting a DB.
-    :param multi_statements: If True, enables multi-statement script execution.
-    :return: A PyMySQL Connection object.
+    Establish and return a database connection using the configured engine.
+    If settings.DB_ENGINE == 'mongodb', returns a PyMySQL-compatible connection
+    adapter connected directly to MongoDB collections.
+    Otherwise, returns a native PyMySQL connection.
     """
+    if getattr(settings, 'DB_ENGINE', 'mongodb') == 'mongodb':
+        from config.mongo_adapter import get_mongo_db_connection
+        return get_mongo_db_connection()
+
+    import pymysql
+    import pymysql.cursors
+    import pymysql.constants.CLIENT
+
     client_flag = 0
     if multi_statements:
         client_flag |= pymysql.constants.CLIENT.MULTI_STATEMENTS
@@ -41,9 +45,12 @@ def get_db_connection(include_db: bool = True, multi_statements: bool = False) -
 
 def check_db_status() -> Dict[str, Any]:
     """
-    Safely tests connectivity to the configured MySQL database without
-    raising unhandled exceptions or halting application startup.
+    Tests connectivity to the active database engine (MongoDB or MySQL).
     """
+    if getattr(settings, 'DB_ENGINE', 'mongodb') == 'mongodb':
+        from config.mongo_adapter import check_mongo_db_status
+        return check_mongo_db_status()
+
     try:
         connection = get_db_connection(include_db=True)
         with connection.cursor() as cursor:
@@ -54,14 +61,17 @@ def check_db_status() -> Dict[str, Any]:
         if result and result.get('test') == 1:
             return {
                 "status": "connected",
+                "engine": "mysql",
                 "message": f"Successfully connected to MySQL database '{settings.DB_NAME}' on {settings.DB_HOST}:{settings.DB_PORT}"
             }
         return {
             "status": "warning",
+            "engine": "mysql",
             "message": "Connected to MySQL, but test query returned unexpected result."
         }
     except Exception as exc:
         return {
             "status": "placeholder_ready",
+            "engine": "mysql",
             "message": f"MySQL connection configured for '{settings.DB_NAME}' on {settings.DB_HOST}:{settings.DB_PORT}. Note: {str(exc)}"
         }

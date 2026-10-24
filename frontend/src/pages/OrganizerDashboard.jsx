@@ -11,6 +11,8 @@ import {
   analyzeImage,
   getBackendAssetUrl,
   getUnreadAlertsCount,
+  getAlerts,
+  markAlertRead,
 } from '../services/api';
 
 import Loading from '../components/Loading';
@@ -30,7 +32,6 @@ export default function OrganizerDashboard() {
   const currentTabFromUrl = searchParams.get('tab') || 'dashboard';
   const resolvedTab = currentTabFromUrl === 'schedule' ? 'my-events' : currentTabFromUrl;
   const [activeTab, setActiveTab] = useState(resolvedTab);
-  const [eventViewMode, setEventViewMode] = useState(currentTabFromUrl === 'schedule' ? 'schedule' : 'catalog');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
 
@@ -47,11 +48,9 @@ export default function OrganizerDashboard() {
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
     if (tabFromUrl) {
-      if (tabFromUrl === 'schedule') {
-        setActiveTab('my-events');
-        setEventViewMode('schedule');
-      } else if (tabFromUrl !== activeTab) {
-        setActiveTab(tabFromUrl);
+      const target = tabFromUrl === 'schedule' ? 'my-events' : tabFromUrl;
+      if (target !== activeTab) {
+        setActiveTab(target);
       }
     }
   }, [searchParams]);
@@ -60,16 +59,26 @@ export default function OrganizerDashboard() {
   useEffect(() => {
     const handlePortalTabSelect = (e) => {
       if (e.detail?.tab) {
-        if (e.detail.tab === 'schedule') {
-          setActiveTab('my-events');
-          setEventViewMode('schedule');
-        } else {
-          setActiveTab(e.detail.tab);
-        }
+        const target = e.detail.tab === 'schedule' ? 'my-events' : e.detail.tab;
+        setActiveTab(target);
       }
     };
     window.addEventListener('portal-tab-select', handlePortalTabSelect);
     return () => window.removeEventListener('portal-tab-select', handlePortalTabSelect);
+  }, []);
+
+  // Listen to portal-alerts-read event to clear banner immediately when read in alerts view
+  useEffect(() => {
+    const handleAlertsRead = (e) => {
+      const alertId = e.detail?.alertId;
+      if (!alertId) {
+        setCrowdAlertNotification(null);
+      } else {
+        setCrowdAlertNotification((prev) => (prev && prev.alertId === alertId ? null : prev));
+      }
+    };
+    window.addEventListener('portal-alerts-read', handleAlertsRead);
+    return () => window.removeEventListener('portal-alerts-read', handleAlertsRead);
   }, []);
 
   // Real backend data states
@@ -90,12 +99,31 @@ export default function OrganizerDashboard() {
     event_name: '',
     description: '',
     requested_date: '',
-    requested_start_time: '09:00',
-    requested_end_time: '17:00',
     category: 'General',
     venue_id: '',
     series_id: '',
   });
+
+  // 12-hour clock picker state (Hour, Minute, AM/PM)
+  const [time12, setTime12] = useState({
+    startHour: '09',
+    startMinute: '00',
+    startPeriod: 'AM',
+    endHour: '05',
+    endMinute: '00',
+    endPeriod: 'PM',
+  });
+
+  // Photo Upload Urgent Crowd Alert notification banner
+  const [crowdAlertNotification, setCrowdAlertNotification] = useState(null);
+
+  // Helper to convert 12-hour clock values to standard 24-hour 'HH:MM:00'
+  const convert12To24 = (hour, minute, period) => {
+    let h = parseInt(hour, 10) || 12;
+    if (period === 'PM' && h < 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+  };
 
   // Photo Upload Modal / State
   const [selectedUploadEvent, setSelectedUploadEvent] = useState(null);
@@ -153,6 +181,27 @@ export default function OrganizerDashboard() {
       if (seriesRes.ok && seriesRes.data?.series) {
         setEventSeries(seriesRes.data.series);
       }
+
+      // Sync unread crowd alerts
+      try {
+        const alertsRes = await getAlerts({ unread_only: true });
+        if (alertsRes.ok && alertsRes.data?.alerts) {
+          const unreads = alertsRes.data.alerts.filter((a) => a.status === 'unread');
+          if (unreads.length > 0) {
+            setCrowdAlertNotification({
+              alertId: unreads[0].id,
+              eventName: unreads[0].event_name,
+              message: unreads[0].message,
+              count: unreads[0].detected_count,
+              threshold: unreads[0].threshold,
+            });
+          } else {
+            setCrowdAlertNotification(null);
+          }
+        }
+      } catch {
+        // Silently handled
+      }
     } catch {
       setErrorMessage('Unable to connect to server. Please verify backend is running.');
     } finally {
@@ -171,23 +220,40 @@ export default function OrganizerDashboard() {
   };
 
   // Switch tabs & close mobile drawer
-  const handleTabChange = (tabId, viewMode = null) => {
+  const handleTabChange = (tabId) => {
     const target = tabId === 'schedule' ? 'my-events' : tabId;
     setActiveTab(target);
-    if (tabId === 'schedule' || viewMode === 'schedule') {
-      setEventViewMode('schedule');
-    } else if (viewMode === 'catalog') {
-      setEventViewMode('catalog');
-    }
     setSearchParams({ tab: target });
     setMobileSidebarOpen(false);
     setFormError('');
     setActionSuccess('');
   };
 
+  // Selected fest derived from formData.series_id
+  const selectedFest = useMemo(() => {
+    if (!formData.series_id) return null;
+    return eventSeries.find((s) => String(s.id) === String(formData.series_id)) || null;
+  }, [formData.series_id, eventSeries]);
+
   // Form field changes
   const handleFormChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'series_id') {
+      const fest = eventSeries.find((s) => String(s.id) === String(value));
+      setFormData((prev) => {
+        let newDate = prev.requested_date;
+        if (fest) {
+          if (fest.start_date && newDate < fest.start_date) newDate = fest.start_date;
+          if (fest.end_date && newDate > fest.end_date) newDate = fest.end_date;
+        }
+        return {
+          ...prev,
+          series_id: value,
+          requested_date: newDate,
+        };
+      });
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -200,22 +266,36 @@ export default function OrganizerDashboard() {
     setFormError('');
     setActionSuccess('');
 
+    if (!formData.series_id) {
+      setFormError('Fest selection is mandatory. Please select an active Fest first.');
+      return;
+    }
+
     if (!formData.event_name.trim()) {
       setFormError('Event title is required.');
       return;
     }
 
     if (!formData.requested_date) {
-      setFormError('Preferred date is required.');
+      setFormError('Preferred event date is required.');
       return;
     }
 
-    if (!formData.series_id) {
-      setFormError('Please select an active Fest.');
-      return;
+    if (selectedFest) {
+      if (selectedFest.start_date && formData.requested_date < selectedFest.start_date) {
+        setFormError(`Event date cannot be earlier than ${selectedFest.name} start date (${selectedFest.start_date}).`);
+        return;
+      }
+      if (selectedFest.end_date && formData.requested_date > selectedFest.end_date) {
+        setFormError(`Event date cannot be later than ${selectedFest.name} end date (${selectedFest.end_date}).`);
+        return;
+      }
     }
 
-    if (formData.requested_start_time >= formData.requested_end_time) {
+    const startTime24 = convert12To24(time12.startHour, time12.startMinute, time12.startPeriod);
+    const endTime24 = convert12To24(time12.endHour, time12.endMinute, time12.endPeriod);
+
+    if (startTime24 >= endTime24) {
       setFormError('Event start time must precede end time.');
       return;
     }
@@ -227,8 +307,8 @@ export default function OrganizerDashboard() {
         event_name: formData.event_name.trim(),
         description: formData.description.trim(),
         requested_date: formData.requested_date,
-        requested_start_time: formData.requested_start_time.length === 5 ? `${formData.requested_start_time}:00` : formData.requested_start_time,
-        requested_end_time: formData.requested_end_time.length === 5 ? `${formData.requested_end_time}:00` : formData.requested_end_time,
+        requested_start_time: startTime24,
+        requested_end_time: endTime24,
         category: formData.category,
         venue_id: formData.venue_id ? parseInt(formData.venue_id, 10) : null,
         series_id: parseInt(formData.series_id, 10),
@@ -242,11 +322,17 @@ export default function OrganizerDashboard() {
           event_name: '',
           description: '',
           requested_date: '',
-          requested_start_time: '09:00',
-          requested_end_time: '17:00',
           category: 'General',
           venue_id: '',
           series_id: '',
+        });
+        setTime12({
+          startHour: '09',
+          startMinute: '00',
+          startPeriod: 'AM',
+          endHour: '05',
+          endMinute: '00',
+          endPeriod: 'PM',
         });
         // Refresh dashboard data
         await loadDashboard();
@@ -309,7 +395,17 @@ export default function OrganizerDashboard() {
         const newImgId = res.data?.image?.id;
         if (newImgId) {
           try {
-            await analyzeImage(newImgId);
+            const analyzeRes = await analyzeImage(newImgId);
+            if (analyzeRes.ok && analyzeRes.data?.alerts_generated?.length > 0) {
+              const triggeredAlert = analyzeRes.data.alerts_generated[0];
+              setCrowdAlertNotification({
+                alertId: triggeredAlert.id,
+                eventName: selectedUploadEvent.event_name,
+                message: triggeredAlert.message || 'Safety threshold exceeded! High crowd density detected.',
+                count: triggeredAlert.detected_count || analyzeRes.data?.predicted_count,
+                threshold: triggeredAlert.threshold,
+              });
+            }
           } catch {
             // Handled gracefully; photoRes will reflect latest status
           }
@@ -818,6 +914,49 @@ export default function OrganizerDashboard() {
           </div>
         </header>
 
+        {/* Urgent Safety Alert Banner (Triggered by CV Crowd Breaches on Upload) */}
+        {crowdAlertNotification && (
+          <div className="portal-alert portal-alert-big portal-alert-danger" role="alert" style={{ marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', width: '100%' }}>
+              <div style={{ flexShrink: 0, marginTop: '2px' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: '#dc2626' }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: '700', fontSize: '1.05rem', color: '#991b1b', marginBottom: '0.25rem' }}>
+                  CRITICAL CROWD SAFETY ALERT: {crowdAlertNotification.eventName}
+                </div>
+                <div style={{ fontSize: '0.925rem', color: '#7f1d1d', lineHeight: '1.45', marginBottom: '0.35rem' }}>
+                  {crowdAlertNotification.message}
+                </div>
+                <div style={{ fontSize: '0.8125rem', color: '#991b1b', fontWeight: '500' }}>
+                  Headcount Detected: <strong>{crowdAlertNotification.count} persons</strong> &bull; Venue Safety Ceiling: <strong>{crowdAlertNotification.threshold} persons</strong> &bull; Dispatched to Event Organizer &amp; Reviewing Administrator.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="portal-alert-close"
+                onClick={async () => {
+                  if (crowdAlertNotification?.alertId) {
+                    try {
+                      await markAlertRead(crowdAlertNotification.alertId);
+                      window.dispatchEvent(new CustomEvent('portal-alerts-read', { detail: { alertId: crowdAlertNotification.alertId } }));
+                    } catch {}
+                  }
+                  setCrowdAlertNotification(null);
+                }}
+                aria-label="Dismiss alert"
+                style={{ color: '#991b1b', fontSize: '1.5rem', lineHeight: '1', alignSelf: 'flex-start', cursor: 'pointer' }}
+              >
+                &times;
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Status Feedback Banners */}
         {actionSuccess && (
           <div className="portal-alert portal-alert-success" role="status">
@@ -1170,11 +1309,15 @@ export default function OrganizerDashboard() {
                       />
                     </div>
 
-                    {/* Date and Times */}
+                    {/* Date and 12-Hour Times */}
                     <div className="form-row-3col">
                       <div className="form-group">
                         <label htmlFor="form-date" className="form-label">
-                          Preferred Date *
+                          Preferred Date * {selectedFest && (
+                            <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>
+                              ({selectedFest.start_date} to {selectedFest.end_date})
+                            </span>
+                          )}
                         </label>
                         <input
                           id="form-date"
@@ -1183,41 +1326,114 @@ export default function OrganizerDashboard() {
                           className="form-input"
                           value={formData.requested_date}
                           onChange={handleFormChange}
+                          min={selectedFest?.start_date || undefined}
+                          max={selectedFest?.end_date || undefined}
                           required
-                          disabled={formSubmitting}
+                          disabled={formSubmitting || !formData.series_id}
                         />
+                        {!formData.series_id ? (
+                          <span className="form-hint" style={{ color: '#d97706', fontWeight: '500' }}>
+                            ⚠️ Select a Fest above first to unlock dates.
+                          </span>
+                        ) : (
+                          <span className="form-hint">
+                            Must be during {selectedFest?.name} ({selectedFest?.start_date} to {selectedFest?.end_date}).
+                          </span>
+                        )}
                       </div>
 
+                      {/* 12-Hour Start Time */}
                       <div className="form-group">
-                        <label htmlFor="form-start" className="form-label">
-                          Start Time *
-                        </label>
-                        <input
-                          id="form-start"
-                          type="time"
-                          name="requested_start_time"
-                          className="form-input"
-                          value={formData.requested_start_time}
-                          onChange={handleFormChange}
-                          required
-                          disabled={formSubmitting}
-                        />
+                        <label className="form-label">Start Time (12-Hour Clock) *</label>
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          <select
+                            id="form-start-hour"
+                            className="form-select"
+                            value={time12.startHour}
+                            onChange={(e) => setTime12((prev) => ({ ...prev, startHour: e.target.value }))}
+                            disabled={formSubmitting}
+                            style={{ flex: '1 1 60px', padding: '0.55rem 0.4rem', textAlign: 'center' }}
+                            aria-label="Start Hour"
+                          >
+                            {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((h) => (
+                              <option key={h} value={h}>{h}</option>
+                            ))}
+                          </select>
+                          <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-secondary)' }}>:</span>
+                          <select
+                            id="form-start-minute"
+                            className="form-select"
+                            value={time12.startMinute}
+                            onChange={(e) => setTime12((prev) => ({ ...prev, startMinute: e.target.value }))}
+                            disabled={formSubmitting}
+                            style={{ flex: '1 1 60px', padding: '0.55rem 0.4rem', textAlign: 'center' }}
+                            aria-label="Start Minute"
+                          >
+                            {['00', '15', '30', '45'].map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <select
+                            id="form-start-ampm"
+                            className="form-select"
+                            value={time12.startPeriod}
+                            onChange={(e) => setTime12((prev) => ({ ...prev, startPeriod: e.target.value }))}
+                            disabled={formSubmitting}
+                            style={{ flex: '1 1 70px', padding: '0.55rem 0.5rem', fontWeight: '700', textAlign: 'center' }}
+                            aria-label="Start AM/PM"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
+                        <span className="form-hint">Selected: {time12.startHour}:{time12.startMinute} {time12.startPeriod}</span>
                       </div>
 
+                      {/* 12-Hour End Time */}
                       <div className="form-group">
-                        <label htmlFor="form-end" className="form-label">
-                          End Time *
-                        </label>
-                        <input
-                          id="form-end"
-                          type="time"
-                          name="requested_end_time"
-                          className="form-input"
-                          value={formData.requested_end_time}
-                          onChange={handleFormChange}
-                          required
-                          disabled={formSubmitting}
-                        />
+                        <label className="form-label">End Time (12-Hour Clock) *</label>
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          <select
+                            id="form-end-hour"
+                            className="form-select"
+                            value={time12.endHour}
+                            onChange={(e) => setTime12((prev) => ({ ...prev, endHour: e.target.value }))}
+                            disabled={formSubmitting}
+                            style={{ flex: '1 1 60px', padding: '0.55rem 0.4rem', textAlign: 'center' }}
+                            aria-label="End Hour"
+                          >
+                            {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((h) => (
+                              <option key={h} value={h}>{h}</option>
+                            ))}
+                          </select>
+                          <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-secondary)' }}>:</span>
+                          <select
+                            id="form-end-minute"
+                            className="form-select"
+                            value={time12.endMinute}
+                            onChange={(e) => setTime12((prev) => ({ ...prev, endMinute: e.target.value }))}
+                            disabled={formSubmitting}
+                            style={{ flex: '1 1 60px', padding: '0.55rem 0.4rem', textAlign: 'center' }}
+                            aria-label="End Minute"
+                          >
+                            {['00', '15', '30', '45'].map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <select
+                            id="form-end-ampm"
+                            className="form-select"
+                            value={time12.endPeriod}
+                            onChange={(e) => setTime12((prev) => ({ ...prev, endPeriod: e.target.value }))}
+                            disabled={formSubmitting}
+                            style={{ flex: '1 1 70px', padding: '0.55rem 0.5rem', fontWeight: '700', textAlign: 'center' }}
+                            aria-label="End AM/PM"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
+                        <span className="form-hint">Selected: {time12.endHour}:{time12.endMinute} {time12.endPeriod}</span>
                       </div>
                     </div>
 
@@ -1254,162 +1470,111 @@ export default function OrganizerDashboard() {
           )}
 
           {/* ============================================================ */}
-          {/* TAB 3: MY EVENTS & SCHEDULE (COMBINED) */}
+          {/* TAB 3: MY EVENTS CATALOG & SCHEDULE (MERGED) */}
           {/* ============================================================ */}
           {activeTab === 'my-events' && (
             <div className="tab-pane">
               <section className="portal-section-card">
-                <div className="section-card-header" style={{ flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
+                <div className="section-card-header">
                   <div className="header-title-stack">
-                    <h2 className="section-card-title">
-                      {eventViewMode === 'schedule' ? 'Confirmed Event Schedule' : 'My Events Catalog'}
-                    </h2>
+                    <h2 className="section-card-title">My Events Catalog</h2>
                     <span className="section-card-subtitle">
-                      {eventViewMode === 'schedule'
-                        ? 'Chronological agenda of approved university events across campus auditoriums and venues'
-                        : 'Review all submitted proposals, track approval decisions, and inspect venue allocations'}
+                      Review all submitted proposals, track approval decisions, and inspect venue allocations
                     </span>
                   </div>
+                </div>
 
-                  {/* Unified Segmented View Switcher */}
-                  <div className="combined-view-toggle">
+                {/* Filter Pills */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div className="filter-pill-group">
                     <button
                       type="button"
-                      className={`btn btn-sm ${eventViewMode === 'catalog' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => setEventViewMode('catalog')}
+                      className={`filter-pill ${statusFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('all')}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
-                      <span>Events Catalog ({allEvents.length})</span>
+                      All ({allEvents.length})
                     </button>
                     <button
                       type="button"
-                      className={`btn btn-sm ${eventViewMode === 'schedule' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => setEventViewMode('schedule')}
+                      className={`filter-pill ${statusFilter === 'approved' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('approved')}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                        <line x1="16" y1="2" x2="16" y2="6" />
-                        <line x1="8" y1="2" x2="8" y2="6" />
-                        <line x1="3" y1="10" x2="21" y2="10" />
-                      </svg>
-                      <span>Event Schedule ({approvedEvents.length})</span>
+                      Approved ({stats.approved_events})
+                    </button>
+                    <button
+                      type="button"
+                      className={`filter-pill ${statusFilter === 'pending' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('pending')}
+                    >
+                      Pending ({stats.pending_events})
+                    </button>
+                    <button
+                      type="button"
+                      className={`filter-pill ${statusFilter === 'rejected' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter('rejected')}
+                    >
+                      Rejected ({stats.rejected_events})
                     </button>
                   </div>
                 </div>
 
-                {/* SUB-VIEW A: EVENTS CATALOG */}
-                {eventViewMode === 'catalog' && (
-                  <>
-                    <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                      {/* Filter Pills */}
-                      <div className="filter-pill-group">
-                        <button
-                          type="button"
-                          className={`filter-pill ${statusFilter === 'all' ? 'active' : ''}`}
-                          onClick={() => setStatusFilter('all')}
-                        >
-                          All ({allEvents.length})
-                        </button>
-                        <button
-                          type="button"
-                          className={`filter-pill ${statusFilter === 'approved' ? 'active' : ''}`}
-                          onClick={() => setStatusFilter('approved')}
-                        >
-                          Approved ({stats.approved_events})
-                        </button>
-                        <button
-                          type="button"
-                          className={`filter-pill ${statusFilter === 'pending' ? 'active' : ''}`}
-                          onClick={() => setStatusFilter('pending')}
-                        >
-                          Pending ({stats.pending_events})
-                        </button>
-                        <button
-                          type="button"
-                          className={`filter-pill ${statusFilter === 'rejected' ? 'active' : ''}`}
-                          onClick={() => setStatusFilter('rejected')}
-                        >
-                          Rejected ({stats.rejected_events})
-                        </button>
-                      </div>
+                <EventTable
+                  events={filteredEvents}
+                  onCreateEvent={() => handleTabChange('create')}
+                  onUploadImage={handleOpenUpload}
+                  emptyMessage={`No ${statusFilter === 'all' ? '' : statusFilter} events found for your account.`}
+                />
 
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setEventViewMode('schedule')}
-                        style={{ fontSize: '0.8125rem' }}
-                      >
-                        Switch to Timeline View &rarr;
-                      </button>
-                    </div>
-
-                    <EventTable
-                      events={filteredEvents}
-                      onCreateEvent={() => handleTabChange('create')}
-                      onUploadImage={handleOpenUpload}
-                      emptyMessage={`No ${statusFilter === 'all' ? '' : statusFilter} events found for your account.`}
-                    />
-                  </>
-                )}
-
-                {/* SUB-VIEW B: CONFIRMED EVENT SCHEDULE */}
-                {eventViewMode === 'schedule' && (
-                  <>
-                    <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                      <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                        Showing confirmed calendar timeline for <strong>{approvedEvents.length}</strong> approved event(s)
+                {/* CONFIRMED EVENT SCHEDULE SECTION MERGED INTO CATALOG */}
+                <div className="confirmed-schedule-section" style={{ marginTop: '2.5rem', paddingTop: '1.75rem', borderTop: '1px solid var(--border-color)' }}>
+                  <div className="section-card-header" style={{ padding: 0, marginBottom: '1.25rem' }}>
+                    <div className="header-title-stack">
+                      <h3 className="section-card-title" style={{ fontSize: '1.2rem' }}>
+                        Confirmed Event Schedule
+                      </h3>
+                      <span className="section-card-subtitle">
+                        Chronological agenda of approved university events across campus auditoriums and venues ({approvedEvents.length} confirmed)
                       </span>
+                    </div>
+                  </div>
+
+                  {approvedEvents.length === 0 ? (
+                    <div className="section-empty-block">
+                      <p>No approved events scheduled currently. Propose an event to begin.</p>
                       <button
                         type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setEventViewMode('catalog')}
-                        style={{ fontSize: '0.8125rem' }}
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleTabChange('create')}
+                        style={{ marginTop: '0.75rem' }}
                       >
-                        &larr; Switch to Catalog View
+                        + Propose Event
                       </button>
                     </div>
-
-                    {approvedEvents.length === 0 ? (
-                      <div className="section-empty-block">
-                        <p>No approved events scheduled currently. Propose an event to begin.</p>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          onClick={() => handleTabChange('create')}
-                          style={{ marginTop: '0.75rem' }}
-                        >
-                          + Propose Event
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="schedule-timeline">
-                        {approvedEvents.map((ev) => (
-                          <div key={ev.id} className="timeline-item">
-                            <div className="timeline-date-marker">
-                              <span className="marker-date">{ev.approved_date || ev.requested_date}</span>
-                              <span className="marker-time">{ev.approved_start_time || ev.requested_start_time}</span>
-                            </div>
-                            <div className="timeline-content-card">
-                              <div className="timeline-content-header">
-                                <h3 className="timeline-event-name">{ev.event_name}</h3>
-                                <StatusBadge status="approved" />
-                              </div>
-                              <p className="timeline-event-venue">
-                                Venue: <strong>{ev.venue_name || 'Main Campus'}</strong> ({ev.venue_location})
-                              </p>
-                              <p className="timeline-event-fest">
-                                Program: {ev.series_name || 'General Fest'} &bull; Category: {ev.category}
-                              </p>
-                            </div>
+                  ) : (
+                    <div className="schedule-timeline">
+                      {approvedEvents.map((ev) => (
+                        <div key={ev.id} className="timeline-item">
+                          <div className="timeline-date-marker">
+                            <span className="marker-date">{ev.approved_date || ev.requested_date}</span>
+                            <span className="marker-time">{ev.approved_start_time || ev.requested_start_time}</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
+                          <div className="timeline-content-card">
+                            <div className="timeline-content-header">
+                              <h3 className="timeline-event-name">{ev.event_name}</h3>
+                              <StatusBadge status="approved" />
+                            </div>
+                            <p className="timeline-event-venue">
+                              Venue: <strong>{ev.venue_name || 'Main Campus'}</strong> ({ev.venue_location})
+                            </p>
+                            <p className="timeline-event-fest">
+                              Program: {ev.series_name || 'General Fest'} &bull; Category: {ev.category}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </section>
             </div>
           )}

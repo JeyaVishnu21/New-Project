@@ -82,28 +82,7 @@ export default function Sidebar() {
         aria-hidden="true"
       />
 
-      {/* 2. Floating Minimal Menu Trigger Button on Top-Left */}
-      <button
-        type="button"
-        className={`sidebar-floating-toggle ${isOpen ? 'toggle-active' : ''} ${
-          isOrganizer ? 'toggle-organizer' : isManagement ? 'toggle-management' : ''
-        }`}
-        onClick={() => setIsOpen(!isOpen)}
-        onMouseEnter={() => setIsOpen(true)}
-        aria-label="Toggle Navigation"
-        title="Hover or click to open Navigation"
-      >
-        <div className="sft-icon" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </div>
-        <span className="sft-label">
-          {isOrganizer ? 'Organizer Menu' : isAdministrator ? 'Administrator Menu' : 'Menu'}
-        </span>
-      </button>
+
 
       {/* 3. Backdrop for Mobile Devices */}
       {isOpen && (

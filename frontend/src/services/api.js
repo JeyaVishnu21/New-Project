@@ -647,10 +647,11 @@ export async function downloadEventReportPdf(eventId, eventName = '') {
  * Optional params: { unread_only: boolean, event_id: number, scope: 'user'|'all' }
  */
 export async function getAlerts(params = {}) {
+  const options = typeof params === 'boolean' ? { unread_only: params } : (params || {});
   const query = new URLSearchParams();
-  if (params.unread_only) query.append('unread_only', 'true');
-  if (params.event_id) query.append('event_id', String(params.event_id));
-  if (params.scope) query.append('scope', params.scope);
+  if (options.unread_only) query.append('unread_only', 'true');
+  if (options.event_id) query.append('event_id', String(options.event_id));
+  if (options.scope) query.append('scope', options.scope);
   const qs = query.toString() ? `?${query.toString()}` : '';
   return await request(`/alerts${qs}`, {
     method: 'GET',
