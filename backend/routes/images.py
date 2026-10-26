@@ -87,7 +87,7 @@ def upload_event_image(event_id: int):
     Strictly isolated: only the event owner (organizer) can upload.
     Validates file format, size, and content integrity before storage.
     """
-    organizer_id = session.get('user_id')
+    organizer_id = (g.current_user and g.current_user.get('id')) or session.get('user_id')
 
     # 1. Verify Event Exists
     event = EventModel.get_by_id(event_id)

@@ -51,9 +51,12 @@ def get_organizer_dashboard():
     Returns summary stats, all organizer events, and upcoming events.
     """
     try:
-        organizer_id = session['user_id']
+        organizer_id = (g.current_user and g.current_user.get('id')) or session.get('user_id')
+        if not organizer_id:
+            return jsonify({"error": "Unauthorized", "message": "Authentication required."}), 401
 
         # Real database aggregations
+
         stats = EventModel.get_organizer_statistics(organizer_id)
         events = EventModel.get_by_organizer(organizer_id)
         upcoming_events = EventModel.get_upcoming_approved_events(limit=5, organizer_id=organizer_id)

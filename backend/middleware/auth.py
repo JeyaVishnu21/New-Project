@@ -88,9 +88,16 @@ def require_auth(f: Callable) -> Callable:
 
         # Strip any sensitive fields before placing in Flask request context g
         g.current_user = UserModel.to_safe_dict(user)
+        # Ensure session also has user_id and user_role populated for legacy route handlers
+        try:
+            session['user_id'] = g.current_user['id']
+            session['user_role'] = g.current_user['role']
+        except Exception:
+            pass
         return f(*args, **kwargs)
 
     return decorated_function
+
 
 
 

@@ -109,8 +109,8 @@ def create_event_request():
     if not fest:
         return jsonify({"error": "Bad Request", "message": f"Fest with ID {series_id} does not exist."}), 400
 
-    # User ID strictly from session context, preventing client spoofing
-    organizer_id = session['user_id']
+    # User ID strictly from session / auth context, preventing client spoofing
+    organizer_id = (g.current_user and g.current_user.get('id')) or session.get('user_id')
 
     try:
         event_id = EventModel.create_event_request(
@@ -140,7 +140,7 @@ def get_organizer_events():
     Retrieve all events belonging to the authenticated organizer.
     Strictly isolated to the logged-in organizer.
     """
-    organizer_id = session['user_id']
+    organizer_id = (g.current_user and g.current_user.get('id')) or session.get('user_id')
     events = EventModel.get_by_organizer(organizer_id)
     return jsonify({"events": events}), 200
 
@@ -159,7 +159,8 @@ def get_event_details(event_id: int):
 
     # Ownership enforcement for organizer role
     if g.current_user['role'] == 'organizer':
-        if event['organizer_id'] != session['user_id']:
+        organizer_id = (g.current_user and g.current_user.get('id')) or session.get('user_id')
+        if event['organizer_id'] != organizer_id:
             return jsonify({
                 "error": "Forbidden", 
                 "message": "Access denied. You are only permitted to view your own events."
