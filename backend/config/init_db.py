@@ -40,11 +40,29 @@ REQUIRED_TABLES: Set[str] = {
 
 def check_database_readiness() -> Dict[str, Any]:
     """
-    Lightweight check to determine if the target MySQL database and tables exist.
-    Does NOT execute schema.sql. Suitable for application boot checks.
+    Lightweight check to determine if the active database engine is ready.
+    Supports both MongoDB (default) and MySQL (legacy).
     """
+    if getattr(settings, 'DB_ENGINE', 'mongodb') == 'mongodb':
+        from config.mongo_adapter import check_mongo_db_status
+        status = check_mongo_db_status()
+        if status.get("status") == "connected":
+            return {
+                "ready": True,
+                "db_exists": True,
+                "missing_tables": [],
+                "existing_tables": list(status.get("collections", {}).keys()),
+                "message": f"MongoDB connected ({status.get('total_documents', 0)} documents in '{settings.MONGO_DB_NAME}')."
+            }
+        return {
+            "ready": False,
+            "db_exists": False,
+            "missing_tables": list(REQUIRED_TABLES),
+            "message": status.get("message", "Could not connect to MongoDB.")
+        }
+
     try:
-        # First check if database exists
+        # First check if database exists (MySQL)
         server_conn = get_db_connection(include_db=False)
         with server_conn.cursor() as cursor:
             cursor.execute(
@@ -61,6 +79,7 @@ def check_database_readiness() -> Dict[str, Any]:
                 "missing_tables": list(REQUIRED_TABLES),
                 "message": f"Database '{settings.DB_NAME}' does not exist on {settings.DB_HOST}:{settings.DB_PORT}."
             }
+
 
         # Check existing tables in target database
         db_conn = get_db_connection(include_db=True)
@@ -96,21 +115,30 @@ def check_database_readiness() -> Dict[str, Any]:
 
 def initialize_database(verbose: bool = True) -> bool:
     """
-    Idempotent database setup:
-    1. Connects to MySQL server without selecting a database.
-    2. Executes CREATE DATABASE IF NOT EXISTS `crowd_event_db`.
-    3. Reconnects to `crowd_event_db` with multi_statements=True.
-    4. Executes the canonical `backend/db/schema.sql`.
-    5. Verifies all required tables exist.
-    
-    Safe to execute multiple times. Does NOT drop or truncate tables.
+    Idempotent database setup for MongoDB or MySQL.
     """
+    if getattr(settings, 'DB_ENGINE', 'mongodb') == 'mongodb':
+        from config.mongo_adapter import check_mongo_db_status, _init_engine_if_needed
+        _init_engine_if_needed()
+        status = check_mongo_db_status()
+        if verbose:
+            print("==================================================")
+            print(" Crowd Event Management System — Database Setup   ")
+            print(f" Database Engine: MongoDB")
+            print(f" Target URI:      {settings.MONGO_URI}")
+            print(f" Target Database: {settings.MONGO_DB_NAME}")
+            print(f" Status:          {status.get('status')}")
+            print(f" Total Documents: {status.get('total_documents', 0)}")
+            print("==================================================")
+        return status.get("status") == "connected"
+
     schema_path = BACKEND_DIR / 'db' / 'schema.sql'
     if not schema_path.exists():
         raise FileNotFoundError(f"Canonical schema file not found at: {schema_path}")
 
     with open(schema_path, 'r', encoding='utf-8') as f:
         schema_sql = f.read()
+
 
     if verbose:
         print("==================================================")

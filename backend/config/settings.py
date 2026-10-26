@@ -46,6 +46,11 @@ class Settings:
         if origin.strip()
     ]
 
+    # Session cookie settings (Required for cross-domain auth between Vercel and Render)
+    SESSION_COOKIE_SAMESITE: str = os.getenv('SESSION_COOKIE_SAMESITE', 'None' if not DEBUG else 'Lax')
+    SESSION_COOKIE_SECURE: bool = os.getenv('SESSION_COOKIE_SECURE', 'True' if not DEBUG else 'False').lower() in ('true', '1', 'yes')
+
+
     # Image Upload settings (Stage 6)
     UPLOAD_FOLDER: Path = Path(os.getenv('UPLOAD_FOLDER', str(BACKEND_DIR / 'uploads' / 'event_images')))
     MAX_CONTENT_LENGTH: int = int(os.getenv('MAX_CONTENT_LENGTH', 10 * 1024 * 1024))  # 10 MB

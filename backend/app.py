@@ -36,7 +36,8 @@ def create_app() -> Flask:
     app.config['SECRET_KEY'] = settings.SECRET_KEY
     app.config['JSON_SORT_KEYS'] = False
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SAMESITE'] = settings.SESSION_COOKIE_SAMESITE
+    app.config['SESSION_COOKIE_SECURE'] = settings.SESSION_COOKIE_SECURE
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
     # Enable Cross-Origin Resource Sharing (CORS) with credentials support for session cookies
@@ -45,6 +46,10 @@ def create_app() -> Flask:
             "origins": settings.CORS_ORIGINS,
             "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"]
+        },
+        r"/uploads/*": {
+            "origins": settings.CORS_ORIGINS,
+            "methods": ["GET", "OPTIONS"]
         }
     })
 

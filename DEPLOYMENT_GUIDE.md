@@ -85,60 +85,61 @@ All existing MySQL tables were migrated directly into MongoDB collections with p
 
 ---
 
-## 3. How to Deploy
+## 3. How to Deploy Cloud Services
 
-### Method 1: 1-Command Deployment with Docker Compose (Recommended)
-
-You can launch the entire stack (MongoDB, Backend, and Frontend) locally or on any VPS (AWS EC2, DigitalOcean, Linode) with one single command:
-
-```bash
-docker compose up --build -d
-```
-
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000/api/health
-- **MongoDB**: localhost:27017
-
-To stop the containers:
-```bash
-docker compose down
-```
 
 ---
 
-### Method 2: Deploy to Render.com (Free & Easy)
+### Method 2: Deploy Frontend on Vercel + Backend on Render (Recommended Cloud Setup)
 
-Render supports both the Flask backend and the React frontend:
+This decouples the static frontend onto Vercel's global CDN and hosts the Flask + PyTorch AI backend on Render's Python runtime.
 
-#### Step 1: Deploy Backend (Web Service)
+#### Step 1: Deploy Backend to Render (Web Service)
 1. Push your repository to GitHub.
 2. Sign in to [Render.com](https://render.com) and click **New +** -> **Web Service**.
-3. Connect your repository.
-4. Fill in the settings:
+3. Connect your GitHub repository.
+4. Configure service settings:
+   - **Name**: `crowd-event-backend` (or your choice)
    - **Root Directory**: `backend`
-   - **Environment**: `Python 3`
+   - **Runtime**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `gunicorn --bind 0.0.0.0:$PORT "app:create_app()"`
-5. Under **Environment Variables**, add:
+   - **Instance Type**: `Free`
+5. Under **Environment Variables**, click **Add Environment Variable**:
+   - `PYTHON_VERSION`: `3.11.0`
    - `DB_ENGINE`: `mongodb`
    - `MONGO_URI`: `your_mongodb_atlas_connection_string`
    - `MONGO_DB_NAME`: `crowd_event_db`
-   - `SECRET_KEY`: `any_random_secure_string_here`
+   - `SECRET_KEY`: `<generate_random_key_or_render_generate>`
    - `DEBUG`: `False`
-6. Click **Create Web Service**. Once deployed, copy your backend URL (e.g., `https://crowd-backend.onrender.com`).
+   - `SESSION_COOKIE_SAMESITE`: `None`
+   - `SESSION_COOKIE_SECURE`: `True`
+6. Click **Create Web Service**. Wait for the build to finish.
+7. Once deployed, copy your backend URL (e.g. `https://crowd-event-backend.onrender.com`).
+   - Test it by opening `https://crowd-event-backend.onrender.com/api/health` in your browser. It should respond `{"status": "healthy"}`.
 
-#### Step 2: Deploy Frontend (Static Site)
-1. In Render, click **New +** -> **Static Site**.
-2. Connect the same repository.
-3. Configure settings:
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm install && npm run build`
-   - **Publish Directory**: `dist`
-4. Under **Environment Variables**, add:
-   - `VITE_API_URL`: `https://crowd-backend.onrender.com/api`
-5. Click **Create Static Site**.
-6. Once deployed, copy your frontend URL (e.g. `https://crowd-frontend.onrender.com`), go back to your **Backend Service** -> **Environment Variables**, and set:
-   - `CORS_ORIGINS`: `https://crowd-frontend.onrender.com`
+#### Step 2: Deploy Frontend to Vercel
+1. Sign in to [Vercel](https://vercel.com) and click **Add New...** -> **Project**.
+2. Import your GitHub repository.
+3. In the project configuration:
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: Click *Edit* and select `frontend` (crucial!)
+   - **Build Command**: `npm run build` (default)
+   - **Output Directory**: `dist` (default)
+4. Expand **Environment Variables** and add:
+   - **Key**: `VITE_API_URL`
+   - **Value**: `https://crowd-event-backend.onrender.com/api` *(replace with your actual Render backend URL followed by `/api`)*
+5. Click **Deploy**.
+6. When deployment finishes, copy your live Vercel frontend URL (e.g. `https://crowd-analysis-client.vercel.app`).
+
+#### Step 3: Link Backend CORS to your Vercel URL
+1. Go back to your [Render Dashboard](https://dashboard.render.com).
+2. Select your backend web service (`crowd-event-backend`) -> **Environment**.
+3. Add or update the `CORS_ORIGINS` variable:
+   - **Key**: `CORS_ORIGINS`
+   - **Value**: `https://your-app-name.vercel.app` *(exact URL of your Vercel frontend without trailing slash)*
+4. Click **Save Changes**. Render will automatically redeploy with the updated CORS policy.
+
 
 ---
 

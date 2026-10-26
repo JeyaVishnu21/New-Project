@@ -13,11 +13,14 @@ const API_HOST = typeof window !== 'undefined' && window.location.hostname === '
 
 export const API_BASE_URL = import.meta.env?.VITE_API_URL || `http://${API_HOST}:5000/api`;
 
+const BACKEND_BASE = API_BASE_URL.replace(/\/api\/?$/, '');
+
 export function getBackendAssetUrl(path) {
   if (!path) return '';
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  return `http://${API_HOST}:5000${path.startsWith('/') ? '' : '/'}${path}`;
+  return `${BACKEND_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
 }
+
 
 /**
  * Generic request helper with credentials: 'include' and standardized error parsing.
