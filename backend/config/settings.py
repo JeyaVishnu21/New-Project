@@ -40,11 +40,19 @@ class Settings:
     MANAGEMENT_REGISTRATION_CODE: str = ADMINISTRATOR_REGISTRATION_CODE
 
     # CORS origins
-    CORS_ORIGINS: list[str] = [
+    _default_cors = (
+        'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,'
+        'https://new-project-chi-sooty.vercel.app'
+    )
+    _user_origins = [
         origin.strip()
-        for origin in os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173').split(',')
+        for origin in os.getenv('CORS_ORIGINS', _default_cors).split(',')
         if origin.strip()
     ]
+    # Always include regex to match any Vercel domain (*.vercel.app)
+    import re
+    CORS_ORIGINS: list = _user_origins + [re.compile(r'^https:\/\/.*\.vercel\.app$')]
+
 
     # Session cookie settings (Required for cross-domain auth between Vercel and Render)
     SESSION_COOKIE_SAMESITE: str = os.getenv('SESSION_COOKIE_SAMESITE', 'None' if not DEBUG else 'Lax')

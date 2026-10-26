@@ -45,11 +45,13 @@ def create_app() -> Flask:
         r"/api/*": {
             "origins": settings.CORS_ORIGINS,
             "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
+            "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+            "expose_headers": ["Content-Type", "Set-Cookie"]
         },
         r"/uploads/*": {
             "origins": settings.CORS_ORIGINS,
-            "methods": ["GET", "OPTIONS"]
+            "methods": ["GET", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Accept"]
         }
     })
 
