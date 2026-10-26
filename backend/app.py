@@ -38,7 +38,9 @@ def create_app() -> Flask:
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = settings.SESSION_COOKIE_SAMESITE
     app.config['SESSION_COOKIE_SECURE'] = settings.SESSION_COOKIE_SECURE
+    app.config['SESSION_COOKIE_PARTITIONED'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+
 
     # Enable Cross-Origin Resource Sharing (CORS) with credentials support for session cookies
     CORS(app, supports_credentials=True, resources={

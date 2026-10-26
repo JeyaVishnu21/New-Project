@@ -6,10 +6,40 @@ session-based identity verification, and role enforcement decorators.
 """
 
 from functools import wraps
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 from flask import session, request, jsonify, g
+from itsdangerous import URLSafeTimedSerializer
 from werkzeug.security import generate_password_hash, check_password_hash
 from models.user import UserModel
+from config.settings import settings
+
+
+def generate_auth_token(user_id: int, role: str) -> str:
+    """Generates a tamper-proof time-signed auth token valid for 7 days."""
+    serializer = URLSafeTimedSerializer(settings.SECRET_KEY)
+    return serializer.dumps({'user_id': user_id, 'role': role})
+
+
+def get_authenticated_user_id() -> Optional[int]:
+    """
+    Retrieves the authenticated user_id from either:
+    1. Authorization Bearer header (reliable across domains Vercel <-> Render)
+    2. Flask session cookie (fallback / same-domain)
+    """
+    # 1. Check Authorization: Bearer <token> header first
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ', 1)[1].strip()
+        try:
+            serializer = URLSafeTimedSerializer(settings.SECRET_KEY)
+            data = serializer.loads(token, max_age=86400 * 7)
+            if data and data.get('user_id'):
+                return data['user_id']
+        except Exception:
+            pass
+
+    # 2. Check session cookie
+    return session.get('user_id')
 
 
 def hash_password(raw_password: str) -> str:
@@ -32,14 +62,14 @@ def verify_password(raw_password: str, hashed_password: str) -> bool:
 
 def require_auth(f: Callable) -> Callable:
     """
-    Decorator that requires an authenticated user session.
-    Verifies the session against the database to guarantee the user exists and is active.
+    Decorator that requires an authenticated user session or Bearer token.
+    Verifies the user against the database to guarantee the user exists and is active.
     Attaches the verified safe user record to Flask's `g.current_user`.
     Returns HTTP 401 Unauthorized if unauthenticated.
     """
     @wraps(f)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        user_id = session.get('user_id')
+        user_id = get_authenticated_user_id()
 
         if not user_id:
             return jsonify({
@@ -50,7 +80,6 @@ def require_auth(f: Callable) -> Callable:
         # Fetch fresh user record from the database
         user = UserModel.get_by_id(user_id)
         if not user:
-            # Session exists but user was deleted or not found
             session.clear()
             return jsonify({
                 "error": "Unauthorized",
@@ -62,6 +91,7 @@ def require_auth(f: Callable) -> Callable:
         return f(*args, **kwargs)
 
     return decorated_function
+
 
 
 def require_role(*allowed_roles: str) -> Callable:

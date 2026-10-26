@@ -79,9 +79,17 @@ def register():
         created_user = UserModel.get_by_id(user_id)
         safe_user = UserModel.to_safe_dict(created_user)
 
+        from middleware.auth import generate_auth_token
+        token = generate_auth_token(safe_user['id'], safe_user['role'])
+        session.clear()
+        session.permanent = True
+        session['user_id'] = safe_user['id']
+        session['user_role'] = safe_user['role']
+
         return jsonify({
             "message": "Registration successful. You can now log in.",
-            "user": safe_user
+            "user": safe_user,
+            "token": token
         }), 201
     except Exception as exc:
         return jsonify({
@@ -97,6 +105,7 @@ def login():
     - Validates credentials against the stored password hash.
     - Enforces two-login system: Only Organizer and Management accounts can log in.
     - Initializes the server-side session.
+    - Generates signed Bearer auth token for cross-domain Vercel <-> Render requests.
     - Returns safe user details without any password hashes.
     """
     data = request.get_json(silent=True) or {}
@@ -124,10 +133,16 @@ def login():
     session['user_id'] = safe_user['id']
     session['user_role'] = safe_user['role']
 
+    # Generate Bearer auth token
+    from middleware.auth import generate_auth_token
+    token = generate_auth_token(safe_user['id'], safe_user['role'])
+
     return jsonify({
         "message": "Login successful.",
-        "user": safe_user
+        "user": safe_user,
+        "token": token
     }), 200
+
 
 
 @auth_bp.route('/logout', methods=['POST'])

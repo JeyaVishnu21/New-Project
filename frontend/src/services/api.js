@@ -35,14 +35,19 @@ async function request(endpoint, options = {}) {
     ? { Accept: 'application/json' }
     : { 'Content-Type': 'application/json', Accept: 'application/json' };
 
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
   const config = {
     headers: {
       ...defaultHeaders,
+      ...authHeaders,
       ...(options.headers || {}),
     },
     credentials: 'include',
     ...options,
   };
+
 
   try {
     const response = await fetch(url, config);
@@ -110,10 +115,16 @@ export async function loginUser(email, password) {
     };
   }
 
-  return await request('/auth/login', {
+  const result = await request('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
   });
+
+  if (result.ok && result.data?.token && typeof localStorage !== 'undefined') {
+    localStorage.setItem('auth_token', result.data.token);
+  }
+
+  return result;
 }
 
 export async function registerUser({ name, email, password, role = 'organizer', managementCode = '' }) {
@@ -147,13 +158,22 @@ export async function registerUser({ name, email, password, role = 'organizer', 
     payload.management_code = (managementCode || '').trim();
   }
 
-  return await request('/auth/register', {
+  const result = await request('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+
+  if (result.ok && result.data?.token && typeof localStorage !== 'undefined') {
+    localStorage.setItem('auth_token', result.data.token);
+  }
+
+  return result;
 }
 
 export async function logoutUser() {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('auth_token');
+  }
   return await request('/auth/logout', {
     method: 'POST',
   });
@@ -171,6 +191,10 @@ export async function getCurrentUser() {
       user: result.data.user,
       error: null,
     };
+  }
+
+  if (result.status === 401 && typeof localStorage !== 'undefined') {
+    localStorage.removeItem('auth_token');
   }
 
   return {
