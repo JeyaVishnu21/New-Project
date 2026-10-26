@@ -1,7 +1,7 @@
 # Complete Deployment Guide (MongoDB & Production Setup)
 ## Campus Crowd Event Management & AI Crowd Monitoring System
 
-This project is now **100% configured for MongoDB**, completely eliminating the need for MySQL. You can deploy it quickly to the cloud using MongoDB Atlas and cloud hosting platforms like **Render**, **Railway**, or with **Docker**.
+This project is now **100% configured for MongoDB**, completely eliminating the need for MySQL. You can deploy it quickly to the cloud using MongoDB Atlas and cloud hosting platforms like **Render**, **Vercel**, or **Railway**.
 
 ---
 
@@ -19,26 +19,25 @@ code/
 │   ├── models/               # Data access logic (Users, Events, Venues, Alerts, Reports)
 │   ├── routes/               # API Blueprints (Auth, Events, Images, Dashboards, Public)
 │   ├── uploads/              # Storage directory for uploaded event crowd photos
-│   ├── Dockerfile            # Production Docker image for Backend
 │   ├── Procfile              # Process manager configuration for Cloud hosting
 │   ├── requirements.txt      # Python dependencies (pymongo, torch, gunicorn, etc.)
 │   └── app.py                # Flask application factory
 │
 ├── frontend/                 # React 19 + Vite Single-Page Application
 │   ├── src/                  # React components, pages, context, and styles
-│   ├── Dockerfile            # Production multi-stage Nginx container for Frontend
-│   ├── nginx.conf            # Reverse proxy configuration for API and static files
+│   ├── vercel.json           # Vercel SPA routing rewrite configuration
+│   ├── .env.example          # Template environment variable for VITE_API_URL
 │   └── package.json          # Node dependencies
 │
 ├── database_backups/         # SQL backups and historical database snapshots
 ├── docs/                     # ER diagrams, specifications, and architecture docs
 ├── scripts/                  # Diagnostics and verification helper scripts
 │
-├── docker-compose.yml        # 1-Command Full Stack Orchestration (Mongo + Backend + Frontend)
-├── render.yaml               # 1-Click Infrastructure Blueprint for Render.com
+├── render.yaml               # Infrastructure blueprint for Render.com
 ├── Procfile                  # Cloud deployment process file
 └── DEPLOYMENT_GUIDE.md        # This deployment documentation
 ```
+
 
 ---
 
